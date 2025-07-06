@@ -1,18 +1,20 @@
 {
   "expo": {
     "name": "AppEms",
-    "slug": "AppEms",
+    "slug": "appems",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "appems",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "sdkVersion": "53.0.0",
+    "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.lileshmohane.appems",       
+      "package": "com.lileshmohane.appems",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -40,16 +42,17 @@
     "experiments": {
       "typedRoutes": true
     },
-    "sdkVersion": "53.0.0",
-    "platforms": ["ios", "android", "web"],
     "androidStatusBar": {
       "backgroundColor": "#ffffff"
     },
     "extra": {
       "eas": {
-        "projectId": "74623636"     
+        "projectId": "74623636-4643-418a-a9e9-7e81c3166f0c"
       },
       "router": {}
+    },
+    "cli": {
+      "appVersionSource": "appVersion"
     }
   }
 }
