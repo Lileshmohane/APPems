@@ -8,9 +8,6 @@
     "scheme": "appems",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    
-    "sdkVersion": "53.0.0",
-    "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true
     },
@@ -43,6 +40,8 @@
     "experiments": {
       "typedRoutes": true
     },
+    "sdkVersion": "53.0.0",
+    "platforms": ["ios", "android", "web"],
     "androidStatusBar": {
       "backgroundColor": "#ffffff"
     },
@@ -51,9 +50,6 @@
         "projectId": "74623636-4643-418a-a9e9-7e81c3166f0c"
       },
       "router": {}
-    },
-    "cli": {
-      "appVersionSource": "appVersion"
     }
   }
 }
