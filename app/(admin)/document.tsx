@@ -1,20 +1,24 @@
 import { Picker } from '@react-native-picker/picker';
 import axios from 'axios';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { useAuth } from '../../components/AuthContext';
 
-const API_BASE_URL = 'http://192.168.1.12:8080/api';
+const API_BASE_URL = 'http://192.168.1.42:8080/api';
 
 interface Employee {
   id: number;
@@ -45,19 +49,13 @@ const getFileIcon = (mimeType: string) => {
 
 const AdminDocumentsPage = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selectedEmployee, setSelectedEmployee] = useState<number | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<number | undefined>(undefined);
   const [companyDocs, setCompanyDocs] = useState<Document[]>([]);
   const [personalDocs, setPersonalDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const { isAuthenticated } = useAuth();
-  const [uploadFiles, setUploadFiles] = useState<{ [key: string]: File | null }>({});
-  const fileInputRefs = {
-    offerLetterDoc: useRef<HTMLInputElement>(null),
-    latestPaySlipDoc: useRef<HTMLInputElement>(null),
-    doc: useRef<HTMLInputElement>(null),
-    personalDoc: useRef<HTMLInputElement>(null),
-  };
+  const [uploadFiles, setUploadFiles] = useState<{ [key: string]: DocumentPicker.DocumentPickerAsset | null }>({});
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -122,7 +120,7 @@ const AdminDocumentsPage = () => {
       const processedPersonalDocs = personalData
         .map((doc: any) => ({
           ...doc,
-          mimeType: doc.type || 'application/octet-stream',
+          mimeType: doc.type || doc.fileType || 'application/octet-stream',
           base64Doc: doc.data,
         }))
         .filter((doc: any) => doc.base64Doc != null);
@@ -151,23 +149,33 @@ const AdminDocumentsPage = () => {
     }
   }, [selectedEmployee, fetchEmployeeDocuments]);
 
-  const handleFilePick = (docType: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) {
-      setUploadFiles(prev => ({ ...prev, [docType]: file }));
+  const handleFilePick = async (docType: string) => {
+    const result = await DocumentPicker.getDocumentAsync({});
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setUploadFiles(prev => ({
+        ...prev,
+        [docType]: result.assets[0], // store the asset directly
+      }));
+    } else {
+      setUploadFiles(prev => ({ ...prev, [docType]: null }));
     }
   };
 
   const handleCompanyDocUpload = async (docType: string) => {
     const file = uploadFiles[docType];
-    if (!file || !selectedEmployee) {
+    if (!file || !file.uri || !file.name || !selectedEmployee) {
       Toast.show({ type: 'error', text1: 'Please select a file and employee' });
       return;
     }
     try {
       setUploading(true);
       const formData = new FormData();
-      formData.append(docType, file);
+      formData.append(docType, {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || 'application/octet-stream',
+      } as any);
+      formData.append('empId', String(selectedEmployee));
       let documentId = null;
       let hasExistingDoc = false;
       try {
@@ -203,14 +211,18 @@ const AdminDocumentsPage = () => {
 
   const handlePersonalDocUpload = async () => {
     const file = uploadFiles.personalDoc;
-    if (!file || !selectedEmployee) {
+    if (!file || !file.uri || !file.name || !selectedEmployee) {
       Toast.show({ type: 'error', text1: 'Please select a file and employee' });
       return;
     }
     try {
       setUploading(true);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || 'application/octet-stream',
+      } as any);
       formData.append('employeeId', String(selectedEmployee));
       await axios.post(`${API_BASE_URL}/documents/upload/${selectedEmployee}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -226,36 +238,52 @@ const AdminDocumentsPage = () => {
     }
   };
 
-  const confirmDelete = (docName: string, onDelete: () => void) => {
-    if (window.confirm(`Are you sure you want to delete ${docName}?`)) {
-      onDelete();
-    }
-  };
-
   const handleDeleteCompanyDoc = async (doc: Document) => {
-    confirmDelete(doc.name, async () => {
-      try {
-        await axios.delete(`${API_BASE_URL}/employee-images/${doc.id}`);
-        Toast.show({ type: 'success', text1: 'Company document deleted!' });
-        if (selectedEmployee) fetchEmployeeDocuments(selectedEmployee);
-      } catch (err) {
-        console.error('Delete failed:', err);
-        Toast.show({ type: 'error', text1: 'Failed to delete company document' });
-      }
-    });
+    Alert.alert(
+      'Delete Document',
+      `Are you sure you want to delete ${doc.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.delete(`${API_BASE_URL}/employee-images/${doc.id}`);
+              Toast.show({ type: 'success', text1: 'Company document deleted!' });
+              if (selectedEmployee) fetchEmployeeDocuments(selectedEmployee);
+            } catch (err) {
+              console.error('Delete failed:', err);
+              Toast.show({ type: 'error', text1: 'Failed to delete company document' });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDeletePersonalDoc = async (docId: number) => {
-    confirmDelete('this personal document', async () => {
-      try {
-        await axios.delete(`${API_BASE_URL}/documents/employee/${selectedEmployee}/document/${docId}`);
-        Toast.show({ type: 'success', text1: 'Personal document deleted!' });
-        if (selectedEmployee) fetchEmployeeDocuments(selectedEmployee);
-      } catch (err) {
-        console.error('Delete failed:', err);
-        Toast.show({ type: 'error', text1: 'Failed to delete personal document' });
-      }
-    });
+    Alert.alert(
+      'Delete Document',
+      'Are you sure you want to delete this personal document?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await axios.delete(`${API_BASE_URL}/documents/employee/${selectedEmployee}/document/${docId}`);
+              Toast.show({ type: 'success', text1: 'Personal document deleted!' });
+              if (selectedEmployee) fetchEmployeeDocuments(selectedEmployee);
+            } catch (err) {
+              console.error('Delete failed:', err);
+              Toast.show({ type: 'error', text1: 'Failed to delete personal document' });
+            }
+          },
+        },
+      ]
+    );
   };
 
   const getEmployeeName = (empId: number) => {
@@ -263,8 +291,23 @@ const AdminDocumentsPage = () => {
     return employee ? `${employee.firstName} ${employee.lastName}` : 'Unknown Employee';
   };
 
-  const handleViewDocument = (doc: Document) => {
-    Toast.show({ type: 'info', text1: 'Viewing documents is not supported on web.' });
+  const handleViewDocument = async (doc: Document) => {
+    if (doc.base64Doc && (doc.mimeType.startsWith('application/pdf') || doc.mimeType.startsWith('image/'))) {
+      try {
+        // Create a file path in the cache directory
+        const ext = doc.mimeType.startsWith('application/pdf') ? '.pdf' : '.jpg';
+        const fileUri = FileSystem.cacheDirectory + (doc.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'document') + ext;
+        // Write the base64 data to the file
+        await FileSystem.writeAsStringAsync(fileUri, doc.base64Doc, { encoding: FileSystem.EncodingType.Base64 });
+        // Share or open the file
+        await Sharing.shareAsync(fileUri, { mimeType: doc.mimeType });
+      } catch (err) {
+        console.error('Failed to open document:', err);
+        Toast.show({ type: 'error', text1: 'Failed to open document' });
+      }
+    } else {
+      Toast.show({ type: 'info', text1: 'Viewing this document type is not supported.' });
+    }
   };
 
   if (loading && !employees.length) {
@@ -301,18 +344,20 @@ const AdminDocumentsPage = () => {
   const renderUploadControls = (docType: string, label: string) => (
     <View style={styles.uploadControls}>
       <Text style={styles.label}>{label}</Text>
-      <input
-        type="file"
-        ref={fileInputRefs[docType]}
-        style={{ marginBottom: 10 }}
-        onChange={e => handleFilePick(docType, e)}
-      />
-      {uploadFiles[docType] && (
-        <Text style={styles.fileName}>Selected: {uploadFiles[docType]?.name}</Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => handleFilePick(docType)}
+      >
+        <Text style={styles.buttonText}>Pick a file</Text>
+      </TouchableOpacity>
+      {uploadFiles[docType] && uploadFiles[docType]?.name && (
+        <Text style={styles.fileName}>Selected: {String(uploadFiles[docType]?.name)}</Text>
       )}
       <TouchableOpacity
         style={[styles.button, (!uploadFiles[docType] || uploading) && styles.disabledButton]}
-        onPress={() => docType === 'personalDoc' ? handlePersonalDocUpload() : handleCompanyDocUpload(docType)}
+        onPress={() => {
+          docType === 'personalDoc' ? handlePersonalDocUpload() : handleCompanyDocUpload(docType);
+        }}
         disabled={!uploadFiles[docType] || uploading}
       >
         <Text style={styles.buttonText}>{uploading ? 'Uploading...' : 'Upload'}</Text>
@@ -324,13 +369,13 @@ const AdminDocumentsPage = () => {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerText}>📁 Admin Document Center (Web)</Text>
+          <Text style={styles.headerText}>📁 Admin Document Center</Text>
         </View>
         <View style={styles.employeeSelector}>
           <Text style={styles.label}>Select Employee:</Text>
           <View style={styles.pickerContainer}>
             <Picker
-              selectedValue={selectedEmployee}
+              selectedValue={selectedEmployee ?? undefined}
               onValueChange={(itemValue: number) => setSelectedEmployee(itemValue)}
             >
               {employees.map(emp => (
@@ -372,16 +417,16 @@ const styles = StyleSheet.create({
   },
   centered: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   header: {
     marginBottom: 20,
   },
   headerText: {
     fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: 'bold' as const,
+    textAlign: 'center' as const,
   },
   employeeSelector: {
     marginBottom: 20,
@@ -408,7 +453,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '600' as const,
     marginBottom: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
@@ -421,7 +466,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#007BFF',
     padding: 12,
     borderRadius: 5,
-    alignItems: 'center',
+    alignItems: 'center' as const,
     marginBottom: 10,
   },
   buttonText: {
@@ -432,12 +477,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#A9A9A9',
   },
   fileName: {
-    fontStyle: 'italic',
+    fontStyle: 'italic' as const,
     marginBottom: 10,
   },
   documentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
     backgroundColor: '#F9F9F9',
     padding: 10,
     borderRadius: 5,
@@ -452,10 +497,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   docName: {
-    fontWeight: 'bold'
+    fontWeight: 'bold' as const,
   },
   documentActions: {
-    flexDirection: 'row',
+    flexDirection: 'row' as const,
   },
   actionButton: {
     marginLeft: 10,

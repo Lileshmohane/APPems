@@ -4,15 +4,28 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
 
-const API_BASE_URL = 'http://192.168.1.12:8080/api';
+const API_BASE_URL = 'http://192.168.1.42:8080/api';
+
+// Define the employee type
+interface Employee {
+  id: string | number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  department: string;
+  jobTitle: string;
+  salary?: number;
+  status: string;
+}
 
 const EmployeeProfile = () => {
   const { employeeId: authEmployeeId, isAuthenticated, logout } = useAuth();
-  const employeeId = authEmployeeId || '1'; // Use dummy employeeId if not set
-  const [employee, setEmployee] = useState(null);
+  const employeeId = authEmployeeId; // Only use real employeeId
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !employeeId) {
@@ -32,9 +45,9 @@ const EmployeeProfile = () => {
         const response = await axios.get(`${API_BASE_URL}/employee/${employeeId}`);
         setEmployee(response.data);
         setError(null);
-      } catch (err) {
+      } catch (err: any) {
         setError('Failed to fetch employee data');
-        if (err.response && err.response.status === 401) {
+        if (err && err.response && err.response.status === 401) {
           logout();
         }
       } finally {
@@ -44,13 +57,14 @@ const EmployeeProfile = () => {
     fetchEmployeeData();
   }, [employeeId, logout]);
 
-  const handleChange = (field, value) => {
-    setEmployee((prev) => ({ ...prev, [field]: value }));
+  const handleChange = (field: keyof Employee, value: string) => {
+    setEmployee((prev) => prev ? { ...prev, [field]: value } : prev);
   };
 
   const handleUpdate = async () => {
     try {
       setLoading(true);
+      if (!employee) return;
       const res = await axios.put(`${API_BASE_URL}/employee/${employee.id}`, employee);
       setEmployee(res.data);
       setEditMode(false);

@@ -1,16 +1,16 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text, TextInput, TouchableOpacity,
-  View
+    ActivityIndicator,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text, TextInput, TouchableOpacity,
+    View
 } from 'react-native';
 import { useAuth, UserRole } from '../../components/AuthContext';
 
-const API_URL = 'http://192.168.1.12:8080/api/auth/login';
+const API_URL = 'http://192.168.1.42:8080/api/auth/login';
 
 const LoginScreen = () => {
   const router = useRouter();
@@ -45,7 +45,8 @@ const LoginScreen = () => {
       await login({
         token: data.token,
         role: data.role,
-        empId: data.empId
+        empId: data.empId,
+        empName: data.empName || ((data.firstName && data.lastName) ? `${data.firstName} ${data.lastName}` : (data.name || ''))
       });
       // Navigate to correct dashboard after successful login
       if (data.role === 'ADMIN') {
@@ -203,4 +204,4 @@ const styles = StyleSheet.create({
   }
 });
 
-export default LoginScreen; 
+export default LoginScreen;

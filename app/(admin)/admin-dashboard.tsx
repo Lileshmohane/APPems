@@ -2,14 +2,14 @@ import { useAuth } from '@/components/AuthContext';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView, StyleSheet,
-  Text,
-  View
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView, StyleSheet,
+    Text,
+    View
 } from 'react-native';
 
-const API_URL = 'http://192.168.1.12:8080/api';
+const API_URL = 'http://192.168.1.42:8080/api';
 
 // Type definitions
 interface LeaveRequest {
@@ -81,6 +81,9 @@ const AdminDashboard = () => {
         tasksRes.json()
       ]);
 
+      // Debug: Log leavesData to inspect structure
+      console.log('leavesData:', JSON.stringify(leavesData, null, 2));
+
       setStats({
           employees: employeesData.length || 0,
           leaveRequests: leavesData.length || 0,
@@ -95,9 +98,9 @@ const AdminDashboard = () => {
         reason: leave.reason || 'No reason provided',
         status: (leave.status || 'PENDING').toUpperCase(),
         employee: {
-          id: leave.employee?.id || '',
-          name: `${leave.employee?.firstName || 'Unknown'} ${leave.employee?.lastName || ''}`,
-          email: leave.employee?.email || 'No email'
+          id: leave.employeeId || '',
+          name: `${leave.firstName || 'Unknown'} ${leave.lastName || ''}`.trim(),
+          email: leave.email || 'No email'
         }
       })));
 
@@ -224,133 +227,169 @@ const AdminDashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f2f6ff',
+    backgroundColor: '#f4f8fb', // lighter, modern background
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#f4f8fb',
   },
   loadingText: {
     marginTop: 12,
     color: '#666',
+    fontSize: 16,
   },
   header: {
-    padding: 16,
+    padding: 24,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e1e1e1',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#0a7ea4',
+    letterSpacing: 0.5,
   },
   errorContainer: {
     margin: 16,
-    padding: 12,
+    padding: 14,
     backgroundColor: '#ffebee',
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ffcdd2',
   },
   errorText: {
     color: '#c62828',
+    fontSize: 15,
+    textAlign: 'center',
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: 8,
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
+    marginHorizontal: 8,
+    marginTop: 8,
   },
   statCard: {
     minWidth: '30%',
     backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
+    padding: 20,
+    borderRadius: 18,
+    elevation: 4,
+    shadowColor: '#0a7ea4',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
     margin: 8,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e3eaf2',
   },
   statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    fontSize: 15,
+    color: '#7b8ca6',
+    marginBottom: 6,
+    fontWeight: '500',
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#0a7ea4',
   },
   section: {
     margin: 16,
-    padding: 16,
+    padding: 18,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
+    borderRadius: 18,
+    elevation: 3,
+    shadowColor: '#0a7ea4',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    marginBottom: 18,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#1a1a1a',
+    marginBottom: 14,
+    color: '#0a7ea4',
+    letterSpacing: 0.2,
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginTop: 2,
   },
   statusText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   leaveCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#f9fbfd',
+    borderRadius: 14,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e1e1e1',
+    borderColor: '#e3eaf2',
+    shadowColor: '#0a7ea4',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   leaveHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   employeeName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontWeight: '700',
+    color: '#0a7ea4',
   },
   employeeEmail: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 13,
+    color: '#7b8ca6',
+    marginTop: 2,
   },
   leaveDetails: {
     borderTopWidth: 1,
-    borderTopColor: '#e1e1e1',
-    paddingTop: 12,
+    borderTopColor: '#e3eaf2',
+    paddingTop: 10,
+    marginTop: 6,
   },
   detailText: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
+    color: '#7b8ca6',
+    marginBottom: 2,
   },
   taskCard: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#f9fbfd',
+    borderRadius: 14,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e1e1e1',
+    borderColor: '#e3eaf2',
+    shadowColor: '#0a7ea4',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
   },
   taskHeader: {
     flexDirection: 'row',
@@ -360,8 +399,8 @@ const styles = StyleSheet.create({
   },
   taskTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontWeight: '700',
+    color: '#0a7ea4',
     flex: 1,
   },
   taskFooter: {
@@ -369,16 +408,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: '#e1e1e1',
-    paddingTop: 12,
+    borderTopColor: '#e3eaf2',
+    paddingTop: 10,
+    marginTop: 6,
   },
   assignedTo: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    color: '#7b8ca6',
   },
   dueDate: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 13,
+    color: '#7b8ca6',
   },
   completedStatus: {
     backgroundColor: '#00C851',

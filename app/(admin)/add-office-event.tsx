@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-const API_URL = "http://192.168.1.12:8080/api/events";
+const API_URL = "http://192.168.1.42:8080/api/events";
 
 interface IEvent {
   id: any;
@@ -25,12 +25,11 @@ interface IEvent {
   date: string;
   location: string;
   description: string;
-  eventImage: string | null; // base64 from server or local uri
+  eventImage: string | null;
   recent?: boolean;
   time?: string;
   meridiem?: 'AM' | 'PM';
 }
-
 const AddOfficeEventPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [showPopup, setShowPopup] = useState(false);

@@ -8,7 +8,7 @@ import {
     Text, TextInput, TouchableOpacity
 } from 'react-native';
 
-const API_URL = 'http://192.168.1.12:8080/api/auth';
+const API_URL = 'http://192.168.1.42:8080/api/auth';
 
 const ForgotPasswordScreen = () => {
   const router = useRouter();

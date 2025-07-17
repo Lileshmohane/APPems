@@ -2,20 +2,21 @@ import { Ionicons } from "@expo/vector-icons";
 // import AsyncStorage from "@react-native-async-storage/async-storage"; // No longer needed
 import { Picker } from "@react-native-picker/picker";
 import axios from "axios";
+import * as FileSystem from 'expo-file-system';
 import { useRouter } from "expo-router";
+import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
 import AdminHoliday from "./AdminHoliday"; // Assuming AdminHoliday.tsx is the correct file and it's a RN component
 
@@ -34,10 +35,28 @@ interface RequestDetails {
   startDate?: string;
   endDate?: string;
   reason?: string;
-  leaveDoc?: any[];
+  leaveDoc?: (string | {
+    base64Doc?: string;
+    url?: string;
+    fileName?: string;
+    mimeType?: string;
+    [key: string]: any;
+  })[] | (string | {
+    base64Doc?: string;
+    url?: string;
+    fileName?: string;
+    mimeType?: string;
+    [key: string]: any;
+  });
   issueType?: string;
   description?: string;
-  hrdoc?: any;
+  hrdoc?: string | {
+    base64Doc?: string;
+    url?: string;
+    fileName?: string;
+    mimeType?: string;
+    [key: string]: any;
+  };
 }
 
 interface HRRequest {
@@ -96,11 +115,11 @@ const AdminHRManagementNativePage = () => {
     try {
       // REMOVED: Token check and headers
       const [leaveRes, complaintsRes] = await Promise.all([
-        axios.get("http://192.168.1.12:8080/api/leaves/").catch(err => {
+        axios.get("http://192.168.1.42:8080/api/leaves/").catch(err => {
             console.error("Leave fetch error:", err.response?.data || err.message);
             return { data: [] };
         }),
-        axios.get("http://192.168.1.12:8080/api/complaints").catch(err => {
+        axios.get("http://192.168.1.42:8080/api/complaints").catch(err => {
             console.error("Complaint fetch error:", err.response?.data || err.message);
             return { data: [] };
         })
@@ -175,7 +194,6 @@ const AdminHRManagementNativePage = () => {
     setActionInProgress(true);
 
     const newStatus: HRRequest['status'] = action === "approve" ? "Approved" : action === "reject" ? "Rejected" : "In Progress";
-    
     try {
         // Optimistic update
         const originalRequests = requests;
@@ -185,14 +203,43 @@ const AdminHRManagementNativePage = () => {
         setRequests(updatedRequests);
         closeDetailsModal();
 
-        // REMOVED: Token and headers
-        await axios.put(
-            `http://192.168.1.12:8080/api/requests/${selectedRequest.id}/status`,
-            { status: newStatus, remarks: responseText }
-        );
+      let url = '';
+      if (selectedRequest.type === 'Leave Request') {
+        url = `http://192.168.1.42:8080/api/leaves/${selectedRequest.id}`;
+        // Build leaveDto object
+        const leaveDto = {
+          id: selectedRequest.id,
+          leaveType: selectedRequest.details.leaveType,
+          startDate: selectedRequest.details.startDate,
+          endDate: selectedRequest.details.endDate,
+          reason: selectedRequest.details.reason,
+          status: newStatus,
+          employeeId: selectedRequest.employee.id,
+        };
+        const formData = new FormData();
+        formData.append('leaveDto', JSON.stringify(leaveDto));
+        await axios.put(url, formData);
+      } else if (selectedRequest.type === 'HR Complaint/Feedback') {
+        url = `http://192.168.1.42:8080/api/complaints/${selectedRequest.id}`;
+        const details = selectedRequest.details;
+        const employeeId = selectedRequest.employee.id;
+        const payload = {
+          description: details.description,
+          employee_id: employeeId,
+          hrdoc: details.hrdoc || null,
+          status: newStatus,
+          submitted_date: selectedRequest.submitted_date,
+          type: details.issueType || details.type || "Complaint"
+        };
+        await axios.put(url, payload);
+      } else {
+        url = `http://192.168.1.42:8080/api/requests/${selectedRequest.id}`;
+        const payload = { status: newStatus };
+        await axios.put(url, payload);
+      }
         // If API call is successful, we keep the optimistic update.
     } catch (error: any) {
-        console.error("Error processing request:", error);
+      console.error("Error processing request:", error, error.response?.data);
         // Revert on failure
         //setRequests(originalRequests); 
         Alert.alert("Error", "Failed to process request: " + (error.response?.data?.message || error.message));
@@ -216,7 +263,7 @@ const AdminHRManagementNativePage = () => {
             setRequests(requests.filter(r => r.id !== request.id));
             try {
               // REMOVED: Token and headers
-              const url = request.type === "Leave Request" ? `http://192.168.1.12:8080/api/leaves/${request.id}` : `http://192.168.1.4:8080/api/complaints/${request.id}`;
+              const url = request.type === "Leave Request" ? `http://192.168.1.9:8080/api/leaves/${request.id}` : `http://192.168.1.4:8080/api/complaints/${request.id}`;
               await axios.delete(url);
             } catch (error: any) {
               // Revert if deletion fails
@@ -238,6 +285,11 @@ const AdminHRManagementNativePage = () => {
   });
 
   const viewRequestDetails = (request: HRRequest) => {
+    // Debug: log leaveDoc value
+    if (request.details && request.details.leaveDoc) {
+      console.log('DEBUG leaveDoc:', request.details.leaveDoc);
+      Alert.alert('Debug', 'leaveDoc: ' + JSON.stringify(request.details.leaveDoc).slice(0, 200) + (JSON.stringify(request.details.leaveDoc).length > 200 ? '...' : ''));
+    }
     setSelectedRequest(request);
     setResponseText(request.hr_remarks || "");
     setShowDetailsModal(true);
@@ -267,7 +319,7 @@ const AdminHRManagementNativePage = () => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ flexGrow: 1 }}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>HR Requests</Text>
         <TouchableOpacity onPress={fetchAllRequests}>
@@ -324,19 +376,21 @@ const AdminHRManagementNativePage = () => {
             </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          data={filteredRequests}
-          renderItem={renderRequestItem}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContainer}
-          ListEmptyComponent={() => (
+        <View>
+          {filteredRequests.length === 0 ? (
             <View style={styles.emptyListContainer}>
               <Text style={styles.emptyListText}>No requests found.</Text>
             </View>
+          ) : (
+            filteredRequests.map((item) => (
+              <React.Fragment key={`${item.type}-${item.id}`}>
+                {renderRequestItem({ item })}
+              </React.Fragment>
+            ))
           )}
-        />
+        </View>
       )}
-      
+
       <AdminHoliday />
 
       {selectedRequest && (
@@ -369,6 +423,196 @@ const AdminHRManagementNativePage = () => {
                     <Text style={styles.detailValue}>{String(value)}</Text>
                   </View>
                 ))}
+                {/* Document viewing logic for leaveDoc */}
+                {selectedRequest.details.leaveDoc && (
+                  Array.isArray(selectedRequest.details.leaveDoc)
+                    ? selectedRequest.details.leaveDoc.map((doc, idx) => {
+                        // Handle JSON object, string (base64), or URL
+                        let fileData: string | null = null;
+                        let fileName = `document_${idx}.pdf`;
+                        let mimeType = 'application/pdf';
+                        if (doc && typeof doc === 'object') {
+                          if (doc.base64Doc) {
+                            fileData = doc.base64Doc;
+                            fileName = doc.fileName || fileName;
+                            mimeType = doc.mimeType || mimeType;
+                          } else if (doc.url) {
+                            fileData = doc.url;
+                            fileName = doc.fileName || fileName;
+                            mimeType = doc.mimeType || mimeType;
+                          }
+                        } else if (
+                          typeof doc === 'string' &&
+                          !!doc &&
+                          doc.length > 0 &&
+                          doc !== 'string' && // skip placeholder
+                          doc !== '[object Object]'
+                        ) {
+                          fileData = doc;
+                        }
+                        if (!fileData || fileData === 'string' || fileData === '[object Object]') {
+                          return (
+                            <TouchableOpacity
+                              key={idx}
+                              style={[styles.actionButton, { backgroundColor: '#8E8E93', marginVertical: 4 }]}
+                              onPress={() => Alert.alert('No document', 'No valid document is attached to this request.')}
+                            >
+                              <Text style={styles.actionButtonText}>No Document {idx + 1}</Text>
+                            </TouchableOpacity>
+                          );
+                        }
+                        return (
+                          <TouchableOpacity
+                            key={idx}
+                            style={[styles.actionButton, { backgroundColor: '#007AFF', marginVertical: 4 }]}
+                            onPress={async () => {
+                              try {
+                                let fileUri = '';
+                                if (typeof fileData === 'string' && fileData.startsWith('http')) {
+                                  fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                                  const downloadRes = await FileSystem.downloadAsync(fileData, fileUri);
+                                  fileUri = downloadRes.uri;
+                                } else if (typeof fileData === 'string' && fileData.length > 100) {
+                                  fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                                  await FileSystem.writeAsStringAsync(fileUri, fileData, { encoding: FileSystem.EncodingType.Base64 });
+                                } else {
+                                  Alert.alert('Error', 'Document data is invalid or too short.');
+                                  return;
+                                }
+                                await Sharing.shareAsync(fileUri, { mimeType });
+                              } catch (e: any) {
+                                Alert.alert('Error', 'Could not open document. ' + (e.message || ''));
+                              }
+                            }}
+                          >
+                            <Text style={styles.actionButtonText}>View Document {idx + 1}</Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    : (() => {
+                        const doc = selectedRequest.details.leaveDoc;
+                        let fileData: string | null = null;
+                        let fileName = 'document.pdf';
+                        let mimeType = 'application/pdf';
+                        if (doc && typeof doc === 'object') {
+                          if (doc.base64Doc) {
+                            fileData = doc.base64Doc;
+                            fileName = doc.fileName || fileName;
+                            mimeType = doc.mimeType || mimeType;
+                          } else if (doc.url) {
+                            fileData = doc.url;
+                            fileName = doc.fileName || fileName;
+                            mimeType = doc.mimeType || mimeType;
+                          }
+                        } else if (
+                          typeof doc === 'string' &&
+                          !!doc &&
+                          doc.length > 0 &&
+                          doc !== 'string' &&
+                          doc !== '[object Object]'
+                        ) {
+                          fileData = doc;
+                        }
+                        if (!fileData || fileData === 'string' || fileData === '[object Object]') {
+                          return (
+                            <TouchableOpacity
+                              style={[styles.actionButton, { backgroundColor: '#8E8E93', marginVertical: 4 }]}
+                              onPress={() => Alert.alert('No document', 'No valid document is attached to this request.')}
+                            >
+                              <Text style={styles.actionButtonText}>No Document</Text>
+                            </TouchableOpacity>
+                          );
+                        }
+                        return (
+                          <TouchableOpacity
+                            style={[styles.actionButton, { backgroundColor: '#007AFF', marginVertical: 4 }]}
+                            onPress={async () => {
+                              try {
+                                let fileUri = '';
+                                if (typeof fileData === 'string' && fileData.startsWith('http')) {
+                                  fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                                  const downloadRes = await FileSystem.downloadAsync(fileData, fileUri);
+                                  fileUri = downloadRes.uri;
+                                } else if (typeof fileData === 'string' && fileData.length > 100) {
+                                  fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                                  await FileSystem.writeAsStringAsync(fileUri, fileData, { encoding: FileSystem.EncodingType.Base64 });
+                                } else {
+                                  Alert.alert('Error', 'Document data is invalid or too short.');
+                                  return;
+                                }
+                                await Sharing.shareAsync(fileUri, { mimeType });
+                              } catch (e: any) {
+                                Alert.alert('Error', 'Could not open document. ' + (e.message || ''));
+                              }
+                            }}
+                          >
+                            <Text style={styles.actionButtonText}>View Document</Text>
+                          </TouchableOpacity>
+                        );
+                      })()
+                )}
+                {/* Document viewing logic for hrdoc */}
+                {selectedRequest.details.hrdoc && (() => {
+                  const doc = selectedRequest.details.hrdoc;
+                  let fileData: string | null = null;
+                  let fileName = 'hrdoc.pdf';
+                  let mimeType = 'application/pdf';
+                  if (doc && typeof doc === 'object') {
+                    if (doc.base64Doc) {
+                      fileData = doc.base64Doc;
+                      fileName = doc.fileName || fileName;
+                      mimeType = doc.mimeType || mimeType;
+                    } else if (doc.url) {
+                      fileData = doc.url;
+                      fileName = doc.fileName || fileName;
+                      mimeType = doc.mimeType || mimeType;
+                    }
+                  } else if (
+                    typeof doc === 'string' &&
+                    !!doc &&
+                    doc.length > 0 &&
+                    doc !== 'string' &&
+                    doc !== '[object Object]'
+                  ) {
+                    fileData = doc;
+                  }
+                  if (!fileData || fileData === 'string' || fileData === '[object Object]') {
+                    return (
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: '#8E8E93', marginVertical: 4 }]}
+                        onPress={() => Alert.alert('No document', 'No valid document is attached to this request.')}
+                      >
+                        <Text style={styles.actionButtonText}>No HR Document</Text>
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: '#007AFF', marginVertical: 4 }]}
+                      onPress={async () => {
+                        try {
+                          let fileUri = '';
+                          if (typeof fileData === 'string' && fileData.startsWith('http')) {
+                            fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                            const downloadRes = await FileSystem.downloadAsync(fileData, fileUri);
+                            fileUri = downloadRes.uri;
+                          } else if (typeof fileData === 'string' && fileData.length > 100) {
+                            fileUri = FileSystem.cacheDirectory + (fileName.endsWith('.pdf') ? fileName : fileName + '.pdf');
+                            await FileSystem.writeAsStringAsync(fileUri, fileData, { encoding: FileSystem.EncodingType.Base64 });
+                          } else {
+                            Alert.alert('Error', 'Document data is invalid or too short.');
+                            return;
+                          }
+                          await Sharing.shareAsync(fileUri, { mimeType });
+                        } catch (e: any) {
+                          Alert.alert('Error', 'Could not open document. ' + (e.message || ''));
+                        }
+                      }}
+                    >
+                      <Text style={styles.actionButtonText}>View HR Document</Text>
+                    </TouchableOpacity>
+                  );
+                })()}
             </View>
 
             <View style={styles.modalSection}>
@@ -400,7 +644,7 @@ const AdminHRManagementNativePage = () => {
           </ScrollView>
         </Modal>
       )}
-    </View>
+    </ScrollView>
   );
 };
 

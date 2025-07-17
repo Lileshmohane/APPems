@@ -7,8 +7,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   employeeId: string | null;
+  employeeName: string | null; // Added employeeName
   userRole: UserRole | null;
-  login: (loginResponse: { token: string; role: UserRole; empId: number | string }) => Promise<void>;
+  login: (loginResponse: { token: string; role: UserRole; empId: number | string; empName: string }) => Promise<void>; // Added empName
   logout: () => Promise<void>;
 }
 
@@ -18,6 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [employeeName, setEmployeeName] = useState<string | null>(null); // Added employeeName state
   const [userRole, setUserRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
@@ -28,10 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const token = await AsyncStorage.getItem('authToken');
       const empId = await AsyncStorage.getItem('employeeId');
+      const empName = await AsyncStorage.getItem('employeeName'); // Get employeeName
       const userRole = await AsyncStorage.getItem('userRole');
       if (token && empId && userRole) {
         setIsAuthenticated(true);
         setEmployeeId(empId);
+        setEmployeeName(empName); // Set employeeName
         setUserRole(userRole as UserRole);
       }
     } catch (error) {
@@ -41,13 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (loginResponse: { token: string; role: UserRole; empId: number | string }) => {
+  const login = async (loginResponse: { token: string; role: UserRole; empId: number | string; empName: string }) => {
     try {
       await AsyncStorage.setItem('authToken', loginResponse.token);
       await AsyncStorage.setItem('userRole', loginResponse.role);
       await AsyncStorage.setItem('employeeId', String(loginResponse.empId));
+      await AsyncStorage.setItem('employeeName', loginResponse.empName); // Store employeeName
       setIsAuthenticated(true);
       setEmployeeId(String(loginResponse.empId));
+      setEmployeeName(loginResponse.empName); // Set employeeName
       setUserRole(loginResponse.role);
     } catch (error) {
       console.error('Error during login:', error);
@@ -58,8 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       await AsyncStorage.removeItem('authToken');
+      await AsyncStorage.removeItem('employeeId');
+      await AsyncStorage.removeItem('employeeName');
+      await AsyncStorage.removeItem('userRole');
       setIsAuthenticated(false);
       setEmployeeId(null);
+      setEmployeeName(null);
       setUserRole(null);
     } catch (error) {
       console.error('Error during logout:', error);
@@ -68,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, loading, employeeId, userRole, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, loading, employeeId, employeeName, userRole, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -79,5 +89,5 @@ export function useAuth() {
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context;
-} 
+  return context;
+}

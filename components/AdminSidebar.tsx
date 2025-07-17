@@ -34,7 +34,6 @@ const AdminSidebar = ({ onClose }: { onClose?: () => void }) => {
       <View>
         <View style={styles.header}>
           <Text style={styles.headerText}>Admin Panel</Text>
-          {employeeId && <Text style={styles.subHeaderText}>ID: {employeeId}</Text>}
         </View>
         <View style={styles.menu}>
           {menuItems.map((item, index) => (
@@ -56,7 +55,7 @@ const AdminSidebar = ({ onClose }: { onClose?: () => void }) => {
 const styles = StyleSheet.create({
   sidebar: {
     width: 250,
-    backgroundColor: '#0a7ea4',
+    backgroundColor: '#0a7ea4', // Match user sidebar color
     padding: 16,
     flexDirection: 'column',
     justifyContent: 'space-between',
@@ -105,4 +104,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AdminSidebar; 
+export default AdminSidebar;

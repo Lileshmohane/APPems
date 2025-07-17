@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
 
-axios.defaults.baseURL = 'http://192.168.1.12:8080';
+axios.defaults.baseURL = 'http://192.168.1.42:8080';
 
 const EmployeeTask = () => {
   const [tasksData, setTasksData] = useState([]);

@@ -2,20 +2,20 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  Modal,
-  RefreshControl,
-  ScrollView, StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Dimensions,
+    Modal,
+    RefreshControl,
+    ScrollView, StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { useAuth } from '../../components/AuthContext';
 import UserSidebar from '../../components/UserSidebar';
 
-const API_URL = 'http://192.168.1.12:8080/api';
+const API_URL = 'http://192.168.1.42:8080/api';
 
 // Types for API data
 interface Task {
@@ -301,8 +301,6 @@ const UserDashboard = () => {
         )}
 
         <View style={styles.statsRow}>
-          <StatCard icon="check-circle" label="Present" value={stats.present} color="#00C851" />
-          <StatCard icon="cancel" label="Absent" value={stats.absent} color="#ff4444" />
           <StatCard icon="event-available" label="Leave" value={stats.leaveBalance} color="#0a7ea4" />
           <StatCard icon="assignment" label="Tasks" value={stats.tasks} color="#FFBB28" />
         </View>

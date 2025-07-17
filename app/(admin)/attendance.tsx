@@ -1,20 +1,19 @@
 import { AntDesign } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 
 // Interfaces for type safety
@@ -37,7 +36,7 @@ interface AttendanceRecord {
   workLocation: 'WFO' | 'WFH' | 'N/A';
 }
 
-const API_BASE_URL = 'http://192.168.1.12:8080/api';
+const API_BASE_URL = 'http://192.168.1.42:8080/api';
 const workLocations = ['WFO', 'WFH', 'N/A'];
 const attendanceStatuses: AttendanceRecord['status'][] = ['Present', 'Absent', 'Late', 'Excused'];
 
@@ -66,10 +65,6 @@ const AdminAttendancePage = () => {
     status: 'Present' as AttendanceRecord['status'],
     workLocation: 'WFO' as AttendanceRecord['workLocation'],
   });
-
-  // Date/Time Picker State
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState<'clockIn' | 'clockOut' | null>(null);
 
   // Download state
   const [downloadMonth, setDownloadMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
@@ -217,17 +212,6 @@ const AdminAttendancePage = () => {
   
   const handleCloseModal = () => setIsModalOpen(false);
 
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) setFormData(prev => ({ ...prev, date: selectedDate.toISOString().split('T')[0] }));
-  };
-
-  const onTimeChange = (event: any, selectedTime?: Date) => {
-    const field = showTimePicker;
-    setShowTimePicker(null);
-    if (selectedTime && field) setFormData(prev => ({ ...prev, [field]: selectedTime.toTimeString().slice(0, 5) }));
-  };
-
   // --- Download Handler ---
   const handleDownloadMonthlyAttendance = async () => {
     if (!downloadMonth) {
@@ -306,7 +290,12 @@ const AdminAttendancePage = () => {
           </View>
           
           <Text style={styles.label}>Date*</Text>
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.input}><Text>{formData.date}</Text></TouchableOpacity>
+          <TextInput
+            style={styles.input}
+            placeholder="YYYY-MM-DD"
+            value={formData.date}
+            onChangeText={text => setFormData(prev => ({ ...prev, date: text }))}
+          />
           
           <Text style={styles.label}>Status*</Text>
           <View style={styles.pickerWrapper}>
@@ -325,9 +314,19 @@ const AdminAttendancePage = () => {
           {(formData.status === 'Present' || formData.status === 'Late') && (
             <>
               <Text style={styles.label}>Clock In Time</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker('clockIn')} style={styles.input}><Text>{formData.clockIn || 'Set Time'}</Text></TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="HH:MM"
+                value={formData.clockIn}
+                onChangeText={text => setFormData(prev => ({ ...prev, clockIn: text }))}
+              />
               <Text style={styles.label}>Clock Out Time</Text>
-              <TouchableOpacity onPress={() => setShowTimePicker('clockOut')} style={styles.input}><Text>{formData.clockOut || 'Set Time'}</Text></TouchableOpacity>
+              <TextInput
+                style={styles.input}
+                placeholder="HH:MM"
+                value={formData.clockOut}
+                onChangeText={text => setFormData(prev => ({ ...prev, clockOut: text }))}
+              />
             </>
           )}
 
@@ -411,8 +410,6 @@ const AdminAttendancePage = () => {
         </View>
       </Modal>
 
-      {showDatePicker && <DateTimePicker value={new Date(formData.date)} mode="date" display="default" onChange={onDateChange} />}
-      {showTimePicker && <DateTimePicker value={new Date()} mode="time" is24Hour={true} display="default" onChange={onTimeChange} />}
     </SafeAreaView>
   )
 };

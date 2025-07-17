@@ -2,11 +2,12 @@ import { Feather } from '@expo/vector-icons';
 import axios from 'axios';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../components/AuthContext';
 
-const API_BASE_URL = 'http://192.168.1.12:8080/api';
+const API_BASE_URL = 'http://192.168.1.42:8080/api';
 
 interface Document {
   name: string;
@@ -17,7 +18,40 @@ interface Document {
   offerLetterDoc?: string;
   latestPaySlipDoc?: string;
   doc?: string;
+  mimeType?: string; // <-- Added for compatibility with company docs
 }
+
+const processCompanyDocs = (companyDoc: Document) => {
+  const docs = [];
+  if (companyDoc.offerLetterDoc) {
+    docs.push({
+      name: 'Offer Letter',
+      type: 'Offer Letter',
+      mimeType: 'application/pdf',
+      base64Doc: companyDoc.offerLetterDoc,
+      uploadDate: companyDoc.uploadDate,
+    });
+  }
+  if (companyDoc.latestPaySlipDoc) {
+    docs.push({
+      name: 'Pay Slip',
+      type: 'Pay Slip',
+      mimeType: 'application/pdf',
+      base64Doc: companyDoc.latestPaySlipDoc,
+      uploadDate: companyDoc.uploadDate,
+    });
+  }
+  if (companyDoc.doc) {
+    docs.push({
+      name: 'Other Document',
+      type: 'Other Document',
+      mimeType: 'application/pdf',
+      base64Doc: companyDoc.doc,
+      uploadDate: companyDoc.uploadDate,
+    });
+  }
+  return docs;
+};
 
 const DocumentCenter = () => {
   const { employeeId: authEmployeeId, isAuthenticated, logout } = useAuth();
@@ -54,7 +88,16 @@ const DocumentCenter = () => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE_URL}/employee-images/emp/${employeeId}`);
-      setCompanyDocs(Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []));
+      console.log('Company doc response:', res.data);
+      let processedDocs: Document[] = [];
+      if (Array.isArray(res.data)) {
+        // If array, process each item
+        processedDocs = res.data.flatMap(processCompanyDocs);
+      } else if (res.data) {
+        // If single object, process directly
+        processedDocs = processCompanyDocs(res.data);
+      }
+      setCompanyDocs(processedDocs);
       setError(null);
     } catch (err) {
       setError('Failed to fetch company documents.');
@@ -107,12 +150,12 @@ const DocumentCenter = () => {
       return;
     }
     try {
-      const fileUri = FileSystem.cacheDirectory + fileName;
+      // Use the same logic as admin: write file and share
+      const ext = mimeType.startsWith('application/pdf') ? '.pdf' : mimeType.startsWith('image/') ? '.jpg' : '';
+      const safeName = (fileName || 'document').replace(/[^a-zA-Z0-9]/g, '_') + ext;
+      const fileUri = FileSystem.cacheDirectory + safeName;
       await FileSystem.writeAsStringAsync(fileUri, base64String, { encoding: FileSystem.EncodingType.Base64 });
-      await FileSystem.getContentUriAsync(fileUri).then(uri => {
-        setSelectedDoc({ uri, mimeType });
-        setShowModal(true);
-      });
+      await Sharing.shareAsync(fileUri, { mimeType });
     } catch (error) {
       Alert.alert('Error', 'Could not display document.');
     }
@@ -122,10 +165,19 @@ const DocumentCenter = () => {
     doc.name?.toLowerCase().includes(search.toLowerCase()) ||
     doc.type?.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredCompanyDocs = companyDocs.filter(doc =>
-    doc.name?.toLowerCase().includes(search.toLowerCase()) ||
-    doc.type?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredCompanyDocs = companyDocs.filter(doc => {
+    // Fallbacks for name/type
+    const docName =
+      doc.name ||
+      (doc.offerLetterDoc ? 'Offer Letter' : doc.latestPaySlipDoc ? 'Pay Slip' : 'Company Document');
+    const docType =
+      doc.type ||
+      (doc.offerLetterDoc ? 'Offer Letter' : doc.latestPaySlipDoc ? 'Pay Slip' : 'Unknown');
+    return (
+      docName.toLowerCase().includes(search.toLowerCase()) ||
+      docType.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   // Guard: If employeeId is not available, show a message and do not fetch or render documents
   if (!employeeId) {
@@ -139,6 +191,11 @@ const DocumentCenter = () => {
 
   return (
     <View style={styles.page}>
+      {(loading || uploading) && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#007AFF" />
+        </View>
+      )}
       <ScrollView contentContainerStyle={styles.main}>
         <Text style={styles.heading}>Document Center</Text>
         <TextInput
@@ -148,7 +205,6 @@ const DocumentCenter = () => {
           onChangeText={setSearch}
         />
         <Text style={styles.sectionTitle}>Personal Documents</Text>
-        {loading ? <ActivityIndicator size="large" color="#007AFF" /> : null}
         {filteredPersonalDocs.map((doc, idx) => (
           <View key={idx} style={styles.card}>
             <Text style={styles.cardTitle}>{doc.name}</Text>
@@ -165,30 +221,31 @@ const DocumentCenter = () => {
           <Text style={styles.uploadBtnText}>{uploading ? 'Uploading...' : 'Upload Personal Document'}</Text>
         </TouchableOpacity>
         <Text style={styles.sectionTitle}>Company Documents</Text>
-        {filteredCompanyDocs.map((doc, idx) => (
+        {companyDocs.map((doc, idx) => (
           <View key={idx} style={styles.card}>
             <Text style={styles.cardTitle}>{doc.name}</Text>
             <Text style={styles.cardType}>{doc.type}</Text>
-            <Text style={styles.cardDate}>Uploaded: {doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : 'N/A'}</Text>
-            <TouchableOpacity style={styles.viewBtn} onPress={() => handleView(doc.offerLetterDoc || doc.latestPaySlipDoc || doc.doc || '', doc.type || '', doc.name || 'document')}>
+            <Text style={styles.cardDate}>
+              Uploaded: {doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : 'N/A'}
+            </Text>
+            <TouchableOpacity
+              style={styles.viewBtn}
+              onPress={() => {
+                if (!doc.base64Doc) {
+                  Alert.alert('Error', 'No document data available.');
+                  return;
+                }
+                let fileName = doc.name;
+                let mimeType = doc.mimeType || 'application/pdf';
+                if (mimeType === 'application/pdf') fileName += '.pdf';
+                handleView(doc.base64Doc, mimeType, fileName);
+              }}
+            >
               <Feather name="eye" size={18} color="#007AFF" />
               <Text style={styles.viewBtnText}>View</Text>
             </TouchableOpacity>
           </View>
         ))}
-        <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modal}>
-              <TouchableOpacity style={styles.closeBtn} onPress={() => setShowModal(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Document Preview</Text>
-              {selectedDoc && (
-                <Text style={styles.modalDesc}>Open this file in your device's viewer: {selectedDoc.uri}</Text>
-              )}
-            </View>
-          </View>
-        </Modal>
         {error && <Text style={styles.error}>{error}</Text>}
       </ScrollView>
     </View>
@@ -216,6 +273,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
   modalDesc: { fontSize: 14, color: '#666', marginBottom: 8 },
   error: { color: '#c62828', marginTop: 16, textAlign: 'center' },
+  loadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
 });
 
 export default DocumentCenter; 

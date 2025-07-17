@@ -54,6 +54,7 @@ interface Employee {
   id: number;
   firstName: string;
   lastName: string;
+  username?: string; // Added for newTask payload
 }
 
 const formatDateForAPI = (dateString: string | Date): string | null => {
@@ -64,6 +65,38 @@ const formatDateForAPI = (dateString: string | Date): string | null => {
   // Assuming dateString is in 'YYYY-MM-DD' format
   return `${dateString}T10:00:00`;
 };
+
+// Helper to format date for Java LocalDateTime
+function formatLocalDateTime(date: Date): string {
+  // Returns 'YYYY-MM-DDTHH:mm:ss'
+  return date.toISOString().slice(0, 19);
+}
+
+// Add this function to fetch tasks for a project
+const getTasks = async (projectId: number) => {
+  try {
+    const response = await axiosInstance.get(`/tasks`); // fetch all tasks
+    const allTasks = Array.isArray(response.data) ? response.data : [];
+    // Filter tasks for this project
+    return allTasks.filter(task => task.projectId === projectId);
+  } catch (err) {
+    console.error("Error fetching tasks:", err);
+    return [];
+  }
+};
+
+// Function to fetch a single task by its ID
+const getTaskById = async (taskId: number) => {
+  try {
+    const response = await axiosInstance.get(`/tasks/${taskId}`);
+    return response.data;
+  } catch (err) {
+    console.error("Error fetching task by ID:", err);
+    return null;
+  }
+};
+// Example usage:
+// const task = await getTaskById(1);
 
 const Admintask = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -84,7 +117,9 @@ const Admintask = () => {
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
 
-  const [newCompany, setNewCompany] = useState({ name: "", description: "" });
+  // Update newCompany state to include required fields
+  type NewCompanyType = { name: string; description: string; email: string; websiteUrl: string; address: string; phoneNumber: string };
+  const [newCompany, setNewCompany] = useState<NewCompanyType>({ name: "", description: "", email: "", websiteUrl: "", address: "", phoneNumber: "" });
   const [newProject, setNewProject] = useState({
     name: "",
     description: "",
@@ -155,10 +190,7 @@ const Admintask = () => {
     };
   };
 
-  const createCompany = async (companyData: {
-    name: string;
-    description: string;
-  }) => {
+  const createCompany = async (companyData: NewCompanyType) => {
     try {
       const response = await axiosInstance.post("/companies", companyData);
       setCompanies((prev) => [...prev, response.data]);
@@ -177,7 +209,9 @@ const Admintask = () => {
           prev
             ? {
                 ...prev,
-                tasks: prev.tasks.filter((task) => task.id !== id),
+                tasks: Array.isArray(prev.tasks)
+                  ? prev.tasks.filter((task) => task.id !== id)
+                  : [],
               }
             : null
         );
@@ -210,7 +244,9 @@ const Admintask = () => {
     try {
       setLoading(true);
       const response = await axiosInstance.get(`/projects/${project.id}`);
-      setSelectedProject(response.data);
+      // Fetch tasks for this project by filtering all tasks
+      const tasks = await getTasks(project.id);
+      setSelectedProject({ ...response.data, tasks });
       setView("tasks");
     } catch (err: any) {
       console.error("Error fetching project:", err);
@@ -235,15 +271,15 @@ const Admintask = () => {
   };
 
   const handleNewCompanySubmit = async () => {
-    if (!newCompany.name.trim()) {
-      Alert.alert("Error", "Company name is required");
+    if (!newCompany.name.trim() || !newCompany.email.trim() || !newCompany.websiteUrl.trim() || !newCompany.address.trim() || !newCompany.phoneNumber.trim()) {
+      Alert.alert("Error", "All fields are required");
       return;
     }
     try {
       setLoading(true);
       await createCompany(newCompany);
       setShowNewCompanyModal(false);
-      setNewCompany({ name: "", description: "" });
+      setNewCompany({ name: "", description: "", email: "", websiteUrl: "", address: "", phoneNumber: "" });
     } catch (err) {
       setError("Failed to create company");
     } finally {
@@ -261,7 +297,7 @@ const Admintask = () => {
       const projectData = {
         name: newProject.name,
         description: newProject.description,
-        company: { id: selectedCompany.id },
+        companyId: selectedCompany.id, // send companyId as top-level field
       };
       const response = await axiosInstance.post("/projects", projectData);
       setSelectedCompany((prev) =>
@@ -282,36 +318,33 @@ const Admintask = () => {
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate =
-      selectedDate ||
-      (datePickerFor === "newTask"
-        ? new Date(newTask.dueDate)
-        : new Date(formData.dueDate));
+    if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+      return;
+    }
+    const currentDate = selectedDate || new Date();
     setShowDatePicker(Platform.OS === "ios");
     if (datePickerFor === "newTask") {
-      setNewTask({ ...newTask, dueDate: currentDate.toISOString().split("T")[0] });
+      setNewTask({ ...newTask, dueDate: formatLocalDateTime(currentDate) });
     } else if (datePickerFor === "editTask") {
       setFormData({
         ...formData,
-        dueDate: currentDate.toISOString().split("T")[0],
+        dueDate: formatLocalDateTime(currentDate),
       });
     }
   };
 
   const createTask = async (taskData: any) => {
     try {
-      const formattedData = {
-        ...taskData,
-        dueDate: formatDateForAPI(taskData.dueDate),
-        project: { id: selectedProject!.id },
-      };
-      const response = await axiosInstance.post("/tasks", formattedData);
+      const response = await axiosInstance.post("/tasks", taskData);
       if (selectedProject) {
         setSelectedProject((prev) =>
           prev
             ? {
                 ...prev,
-                tasks: [...prev.tasks, response.data],
+                tasks: Array.isArray(prev.tasks)
+                  ? [...prev.tasks, response.data]
+                  : [response.data],
               }
             : null
         );
@@ -331,8 +364,9 @@ const Admintask = () => {
     try {
       const formattedData = {
         ...taskData,
-        dueDate: formatDateForAPI(taskData.dueDate),
+        // dueDate is already formatted as 'YYYY-MM-DDTHH:mm:ss' by formatLocalDateTime
       };
+      console.log("Update Task Payload:", formattedData);
       const response = await axiosInstance.put(`/tasks/${id}`, formattedData);
       if (selectedProject) {
         setSelectedProject((prev) => {
@@ -391,19 +425,23 @@ const Admintask = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteTask = async (taskId: number) => {
+  const confirmDelete = (taskId: number) => {
+    console.log("Confirmed delete for task:", taskId);
+    deleteTask(taskId)
+      .catch(() => {
+        Alert.alert("Error", "Failed to delete task.");
+      });
+  };
+
+  const handleDeleteTask = (taskId: number) => {
+    console.log("Delete button pressed for task:", taskId);
+
     Alert.alert("Confirm Delete", "Are you sure you want to delete this task?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteTask(taskId);
-          } catch (err) {
-            Alert.alert("Error", "Failed to delete task.");
-          }
-        },
+        onPress: () => confirmDelete(taskId), // Use a closure to pass the id
       },
     ]);
   };
@@ -415,6 +453,7 @@ const Admintask = () => {
       await updateTask(editingTask.id, {
         ...formData,
         assignedTo: parseInt(formData.assignedTo),
+        projectId: selectedProject?.id, // Ensure projectId is included
       });
       setIsModalOpen(false);
       setEditingTask(null);
@@ -426,14 +465,33 @@ const Admintask = () => {
   };
 
   const handleNewTaskSubmit = async () => {
-    if (!newTask.title.trim() || !selectedProject) return;
+    if (!newTask.title.trim() || !selectedProject || !newTask.assignedTo) {
+      Alert.alert("Error", "All fields are required, including assignee.");
+      return;
+    }
+    // Find the selected employee object
+    const selectedEmployee = employees.find(emp => emp.id.toString() === newTask.assignedTo);
+    if (!selectedEmployee) {
+      Alert.alert("Error", "Please select a valid employee to assign the task.");
+      return;
+    }
     try {
       setLoading(true);
-      await createTask({
-        ...newTask,
+      // Build the payload as required by backend
+      const payload = {
+        // id: (omit for creation, backend will set)
+        title: newTask.title,
+        description: newTask.description,
+        priority: newTask.priority,
+        dueDate: newTask.dueDate,
+        assignedTo: selectedEmployee.username || `${selectedEmployee.firstName}.${selectedEmployee.lastName}`.toLowerCase(),
+        completedAt: null, // null for new task
+        progress: null, // null for new task
         projectId: selectedProject.id,
-        assignedTo: parseInt(newTask.assignedTo, 10),
-      });
+        empId: selectedEmployee.id
+      };
+      console.log("Task payload:", payload);
+      await createTask(payload);
       setShowNewTaskModal(false);
       setNewTask({
         title: "",
@@ -467,9 +525,8 @@ const Admintask = () => {
 
   const formatStatus = (status: Task["status"]) =>
     status
-      .replace("_", " ")
-      .toLowerCase()
-      .replace(/\b\w/g, (l) => l.toUpperCase());
+      ? status.replace("_", " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase())
+      : "";
 
   const showDatepickerFor = (field: "newTask" | "editTask") => {
     setDatePickerFor(field);
@@ -526,21 +583,13 @@ const Admintask = () => {
 
   const renderTasks = () => (
     <ScrollView>
-      {selectedProject?.tasks.map((task) => (
+      {(Array.isArray(selectedProject?.tasks) ? selectedProject.tasks : []).map((task) => (
         <View key={task.id} style={styles.taskCard}>
           <View style={styles.taskHeader}>
             <Text style={styles.taskTitle}>{task.title}</Text>
             <View style={styles.taskActions}>
               <TouchableOpacity onPress={() => handleEditTask(task)}>
                 <AntDesign name="edit" size={20} color="#FFC107" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => handleDeleteTask(task.id)}>
-                <AntDesign
-                  name="delete"
-                  size={20}
-                  color="#F44336"
-                  style={{ marginLeft: 15 }}
-                />
               </TouchableOpacity>
             </View>
           </View>
@@ -625,14 +674,42 @@ const Admintask = () => {
           onChangeText={(text) => setNewCompany({ ...newCompany, name: text })}
         />
         <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#999"
+          keyboardType="email-address"
+          value={newCompany.email}
+          onChangeText={(text) => setNewCompany({ ...newCompany, email: text })}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Website URL"
+          placeholderTextColor="#999"
+          value={newCompany.websiteUrl}
+          onChangeText={(text) => setNewCompany({ ...newCompany, websiteUrl: text })}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Address"
+          placeholderTextColor="#999"
+          value={newCompany.address}
+          onChangeText={(text) => setNewCompany({ ...newCompany, address: text })}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Phone Number"
+          placeholderTextColor="#999"
+          keyboardType="phone-pad"
+          value={newCompany.phoneNumber}
+          onChangeText={(text) => setNewCompany({ ...newCompany, phoneNumber: text })}
+        />
+        <TextInput
           style={[styles.input, { height: 80 }]}
           placeholder="Description"
           placeholderTextColor="#999"
           multiline
           value={newCompany.description}
-          onChangeText={(text) =>
-            setNewCompany({ ...newCompany, description: text })
-          }
+          onChangeText={(text) => setNewCompany({ ...newCompany, description: text })}
         />
       </>,
       handleNewCompanySubmit
@@ -693,7 +770,7 @@ const Admintask = () => {
           style={styles.input}
         >
           <Text style={{ color: newTask.dueDate ? "#fff" : "#999" }}>
-            {newTask.dueDate || "Select Due Date"}
+            {newTask.dueDate ? new Date(newTask.dueDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : "Select Due Date"}
           </Text>
         </TouchableOpacity>
         <Picker
@@ -848,146 +925,193 @@ const Admintask = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#121212",
+    backgroundColor: "#1A2238", // deep blue
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 15,
-    backgroundColor: "#1E1E1E",
+    padding: 18,
+    backgroundColor: "#283655", // blue-purple
+    borderBottomWidth: 1,
+    borderBottomColor: "#6C63FF", // accent
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   headerTitle: {
-    color: "#fff",
-    fontSize: 20,
+    color: "#F5F7FA",
+    fontSize: 22,
     fontWeight: "bold",
+    letterSpacing: 1,
   },
   backButton: {
-    padding: 5,
+    padding: 7,
+    borderRadius: 20,
+    backgroundColor: "#6C63FF",
   },
   content: {
     flex: 1,
-    padding: 10,
+    padding: 14,
   },
   listItem: {
-    backgroundColor: "#1E1E1E",
-    padding: 20,
-    marginVertical: 8,
-    borderRadius: 5,
+    backgroundColor: "#30475E",
+    padding: 22,
+    marginVertical: 10,
+    borderRadius: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    elevation: 2,
+    shadowColor: "#6C63FF",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 4,
+    borderLeftWidth: 5,
+    borderLeftColor: "#6C63FF",
   },
   listItemText: {
-    color: "#fff",
-    fontSize: 16,
+    color: "#F5F7FA",
+    fontSize: 17,
+    fontWeight: "500",
   },
   taskCard: {
-    backgroundColor: "#1E1E1E",
-    padding: 15,
-    marginVertical: 8,
-    borderRadius: 8,
+    backgroundColor: "#232B43",
+    padding: 18,
+    marginVertical: 12,
+    borderRadius: 14,
+    elevation: 3,
+    shadowColor: "#00ADB5",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.13,
+    shadowRadius: 8,
+    borderLeftWidth: 5,
+    borderLeftColor: "#00ADB5", // teal accent
   },
   taskHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
   taskTitle: {
-    color: "#fff",
-    fontSize: 18,
+    color: "#F5F7FA",
+    fontSize: 19,
     fontWeight: "bold",
+    letterSpacing: 0.5,
   },
   taskActions: {
     flexDirection: "row",
+    gap: 10,
   },
   taskDescription: {
-    color: "#b0b0b0",
+    color: "#B2B1B9",
     marginBottom: 10,
+    fontSize: 15,
   },
   taskMeta: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 10,
+    marginTop: 12,
   },
   taskStatus: {
     flexDirection: "row",
     alignItems: "center",
+    backgroundColor: "#6C63FF",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginRight: 8,
   },
   taskMetaText: {
-    color: "#999",
-    marginLeft: 5,
+    color: "#F5F7FA",
+    marginLeft: 6,
+    fontSize: 13,
   },
   fab: {
     position: "absolute",
-    width: 56,
-    height: 56,
+    width: 62,
+    height: 62,
     alignItems: "center",
     justifyContent: "center",
-    right: 20,
-    bottom: 20,
-    backgroundColor: "#03DAC6",
-    borderRadius: 28,
-    elevation: 8,
+    right: 24,
+    bottom: 28,
+    backgroundColor: "#00ADB5",
+    borderRadius: 31,
+    elevation: 10,
+    shadowColor: "#00ADB5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(26,34,56,0.92)",
   },
   modalContent: {
-    width: "90%",
-    backgroundColor: "#2a2a2a",
-    borderRadius: 10,
-    padding: 20,
+    width: "92%",
+    backgroundColor: "#30475E",
+    borderRadius: 16,
+    padding: 26,
     alignItems: "stretch",
+    elevation: 8,
   },
   modalTitle: {
-    marginBottom: 20,
+    marginBottom: 22,
     textAlign: "center",
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#F5F7FA",
+    letterSpacing: 1,
   },
   input: {
-    backgroundColor: "#333",
-    color: "#fff",
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 5,
-    marginBottom: 15,
-    minHeight: 40,
-    justifyContent: "center",
+    backgroundColor: "#232B43",
+    color: "#F5F7FA",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 18,
+    minHeight: 44,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "#6C63FF",
   },
   modalFooter: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 20,
+    marginTop: 24,
   },
   button: {
-    borderRadius: 5,
-    padding: 10,
+    borderRadius: 8,
+    padding: 12,
     elevation: 2,
-    marginLeft: 10,
+    marginLeft: 12,
+    minWidth: 90,
   },
   buttonClose: {
-    backgroundColor: "#555",
+    backgroundColor: "#B2B1B9",
   },
   buttonSubmit: {
-    backgroundColor: "#03DAC6",
+    backgroundColor: "#6C63FF",
   },
   textStyle: {
-    color: "white",
+    color: "#fff",
     fontWeight: "bold",
     textAlign: "center",
+    fontSize: 15,
   },
   picker: {
-    backgroundColor: "#333",
-    color: "#fff",
-    marginBottom: 15,
+    backgroundColor: "#232B43",
+    color: "#F5F7FA",
+    marginBottom: 18,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#00ADB5",
   },
 });
 

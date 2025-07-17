@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://192.168.1.12:8080/api';
+const API_BASE_URL = 'http://192.168.1.42:8080/api';
 
 // Example: import a local image for default avatar
 // import defaultAvatar from '../../assets/images/default-avatar.png';

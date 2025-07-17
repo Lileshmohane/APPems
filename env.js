@@ -1,6 +1,6 @@
 // Environment configuration
 export const BASE_URL = __DEV__ 
-  ? 'http://192.168.1.12:8080/api'  // Development environment
+  ? 'http://192.168.1.42:8080/api'  // Development environment
   : 'https://your-production-api.com/api'; // Production environment (update this URL)
 
 // API endpoints
